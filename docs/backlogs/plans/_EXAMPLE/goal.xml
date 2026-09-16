@@ -1,0 +1,6 @@
+<!-- Worked example, verbatim from the project this harness came from.
+     Three states, one condition each, no 'and'. S1 is true at HEAD. Read for
+     shape; the domain is not yours. -->
+<state id="S1" at="2026-09-14T14:24Z">A student completes a check-in pack, but the submission is discarded on the client; nothing reaches /api/submissions and the mentor dashboard shows an empty circle.</state>
+<state id="S2" at="2026-09-14T14:24Z">A completed check-in persists as a submission with its items, and the student can reopen their own past submission.</state>
+<state id="S3" at="2026-09-14T14:24Z">A mentor sees submissions only for their own circle; a mentor from another circle gets no rows, not a filtered count.</state>

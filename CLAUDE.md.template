@@ -1,0 +1,39 @@
+# {{PROJECT NAME}}
+
+{{One paragraph: what this is, the stack, the halves it splits into.}}
+
+## Doc map
+
+**This table is the only place a doc path is written down.** `.claude/rules/*`,
+`.claude/hooks/*`, skills and agents all defer to it — so moving, renaming or
+sharding a doc is a one-file change. Paths are relative to repo root;
+`reference/` means `docs/reference/`.
+
+| Working on | Read (on demand → deeper) | Update when it breaks |
+|---|---|---|
+| {{a code surface, e.g. `backend/app/routers/**`}} | {{the doc to read, shallowest first}} | {{the command to regenerate + the doc to edit}} |
+| {{another surface}} | {{…}} | {{…}} |
+| a product/domain question | `reference/architecture.md` (domain nouns + invariants) → the one relevant `##` section of `{{product doc}}` | — |
+
+**Docs change only when something breaks a contract** — a response shape, a
+schema or access-control decision, an invariant, a route or layout owner, a
+design token or component spec. Then the "Update when it breaks" column above
+applies. A behaviour-preserving change updates nothing; the Stop hook nudges and
+the escape marker is in the **`cook` skill** §10.
+
+**Never a mandated read:** `docs/backlogs/plans/`'s `done/` and `archived/` are
+history, and `docs/backlogs/`'s `research/` and `debug/` are write destinations,
+not context to load.
+
+**Generated, never hand-edited:** {{list them, with the command that regenerates
+each}}. Edit the source and regenerate. The prose docs beside them are
+hand-written and stay so — a "why" belongs beside its invariant in
+`reference/architecture.md`.
+
+If the area you touched has no row here, ask whether a doc update is needed —
+don't silently skip, and don't invent a path outside this table.
+
+## Known open work
+
+{{Manual or credential-gated steps that are not code gaps, so nobody re-plans
+around them. Delete this section if there are none.}}
