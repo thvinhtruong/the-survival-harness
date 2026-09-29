@@ -1,4 +1,4 @@
-# claude-harness-template
+# The survival kit for Coding with CLAUDE
 
 A goal-driven Claude Code harness, extracted from a working project. Stack-agnostic.
 
