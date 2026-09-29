@@ -1,0 +1,304 @@
+#!/bin/sh
+# A goal is a transfer between states. This is the append-only log of them, one
+# JSON object per line, newest last — so `tail` is where the work stands and
+# reading it costs nothing.
+#
+# Three record kinds, and nothing is ever mutated:
+#   goal     the header — title, written once by `new`
+#   state    a condition the repo is in. An OUTCOME, never a step you take.
+#   failed   an approach that did not work, so nobody retries it
+#   reached  arrival, with the evidence that was actually observed
+#   closed   the goal is done or dropped; a file without one is open
+#
+# Correct by appending: `amend` re-states the last state under the same id
+# rather than rewriting a line. `s` groups the records that describe one state.
+#
+# --debug addresses the other kind of log: a bug fix, in docs/backlogs/debug/.
+# Same records, fixed shape — exactly three sequential states, Reproduced →
+# Fixed → Recorded, and the finished log IS the lesson (the title is the symptom,
+# `failed` records are the plausible fixes that did not work). One goal and one
+# debug log may be open at once: bugs surface mid-goal.
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+GOALS=$ROOT/docs/backlogs/goals
+MODE=goal
+
+NL='\n'
+NL=$(printf '\n:'); NL=${NL%:}
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+now_ts() { date -u +%Y-%m-%dT%H:%MZ; }
+
+command -v jq >/dev/null 2>&1 ||
+	die 'goal: jq is required — this writes JSON, and hand-rolled escaping is how a log gets corrupted'
+
+usage() {
+	cat <<'USAGE'
+goal — the append-only state log
+
+  new <slug> "<title>"          docs/backlogs/goals/<YYMMDD-HHMM-slug>.jsonl
+  add "<outcome>" [opts]        append a state
+       --forbid "<reason>"        what this goal must not touch (repeatable)
+       --plane be|fe              backend ∥ frontend — the one parallel fork
+       --head                     this state is true at HEAD (first state only)
+       --force                    accept an outcome that reads as a task
+  reached <s> "<evidence>"      what was observed — gate output or behaviour
+  failed  <s> "<why>"           an approach that did not work
+  amend "<outcome>"             re-state the last state (append-only correction)
+  close "<disposition>"         done or dropped; the file stops being open
+  now                           the open state + its forbids. The hot path.
+  show                          the whole transfer
+  path
+
+  --debug <command> ...         the same verbs on the open debug log
+                                (docs/backlogs/debug/). Exactly three states,
+                                each reached before the next is added:
+                                  S1 "Reproduced: ..."  S2 "Fixed: ..."  S3 "Recorded: ..."
+                                no --head / --plane; close needs S3 reached
+                                unless the disposition starts escalated|dropped.
+
+Set GOAL=<path/to/file.jsonl> to address a log other than the open one.
+USAGE
+}
+
+# One goal open at a time: a file is open until it carries a `closed` record.
+resolve() {
+	if [ -n "${GOAL:-}" ]; then
+		[ -f "$GOAL" ] || die "GOAL=$GOAL does not exist"
+		printf '%s\n' "$GOAL"
+		return
+	fi
+	[ -d "$GOALS" ] || die "no $MODE log yet — start one with \`$NEWCMD <slug> \"<title>\"\`"
+	found=
+	count=0
+	for f in "$GOALS"/*.jsonl; do
+		[ -f "$f" ] || continue
+		case "$f" in *"/_"*) continue ;; esac
+		if ! jq -s . "$f" >/dev/null 2>&1; then
+			die "$f is not valid JSONL — every line must be one JSON object"
+		fi
+		if [ "$(jq -s 'any(.[]; .kind == "closed")' "$f")" = true ]; then
+			continue
+		fi
+		found=$f
+		count=$((count + 1))
+	done
+	[ "$count" -eq 0 ] && die "no open $MODE log — start one with \`$NEWCMD <slug> \"<title>\"\`, or set GOAL=<path>"
+	[ "$count" -gt 1 ] && die "more than one $MODE log open — close one, or set GOAL=<path>"
+	printf '%s\n' "$found"
+}
+
+append() { # file, then jq -n args already applied by caller via stdin
+	cat >>"$1"
+}
+
+# The one rule that must not bend: a state is a condition the repo is in, not a
+# step someone takes. An imperative opener is the tell.
+# Debug logs: the label each of the three states must open with.
+debug_label() {
+	case $1 in 1) echo Reproduced ;; 2) echo Fixed ;; 3) echo Recorded ;; esac
+}
+require_label() { # s, outcome
+	want=$(debug_label "$1")
+	case "$2" in "$want: "?*) ;; *) die "debug S$1 must read \"$want: <condition>\" — got: \"$2\"" ;; esac
+}
+is_reached() { # file, s
+	[ "$(jq -s --argjson s "$2" 'any(.[]; .kind=="reached" and .s==$s)' "$1")" = true ]
+}
+
+TASKISH='^(locate|find|add|create|implement|update|fix|refactor|write|make|check|run|build|set|remove|delete|wire|hook|migrate|rename|extract|investigate|review|test)[[:space:]]'
+
+cmd_new() {
+	[ "$#" -eq 2 ] || die 'usage: goal new <slug> "<title>"'
+	mkdir -p "$GOALS"
+	f=$GOALS/$(date +%y%m%d-%H%M)-$1.jsonl
+	[ -e "$f" ] && die "$f already exists"
+	jq -nc --arg t "$2" --arg at "$(now_ts)" \
+		'{kind:"goal",title:$t,at:$at}' >"$f"
+	printf 'created %s\n' "${f#"$ROOT"/}"
+	if [ "$MODE" = debug ]; then
+		printf 'first state: goal --debug add "Reproduced: <the failing test / repro, and the root cause>"\n'
+	else
+		printf 'first state: goal add "<where the repo stands now>" --head\n'
+	fi
+}
+
+cmd_add() {
+	outcome=
+	plane=
+	head=false
+	force=false
+	forbids=
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--forbid) [ "$#" -ge 2 ] || die '--forbid needs a reason'
+			forbids="$forbids$2$NL"; shift 2 ;;
+		--plane) [ "$#" -ge 2 ] || die '--plane needs be or fe'
+			case "$2" in be | fe) plane=$2 ;; *) die "--plane must be be or fe" ;; esac
+			shift 2 ;;
+		--head) head=true; shift ;;
+		--force) force=true; shift ;;
+		-*) die "unknown option: $1" ;;
+		*) [ -n "$outcome" ] && die 'one outcome per state — if it says "and", it is two'
+			outcome=$1; shift ;;
+		esac
+	done
+	[ -n "$outcome" ] || die 'usage: goal add "<outcome>" [--forbid "..."] [--plane be|fe] [--head]'
+
+	if [ "$force" = false ] && printf '%s' "$outcome" | tr 'A-Z' 'a-z' | grep -qE "$TASKISH"; then
+		die "that reads as a task, not a state: \"$outcome\"
+A state is a condition the repo is in — checkable, and true or false regardless
+of who is working. \"Locate the DB schema\" is a step; \"submissions persist and
+their author can read them back\" is a state. Rephrase, or --force if you are sure."
+	fi
+
+	f=$(resolve)
+	n=$(jq -s '[.[] | select(.kind=="state") | .s] | max // 0' "$f")
+	if [ "$head" = true ] && [ "$n" -ne 0 ]; then
+		die '--head marks the state that was true at HEAD; only the first state can be that'
+	fi
+	s=$((n + 1))
+	if [ "$MODE" = debug ]; then
+		[ "$head" = false ] && [ -z "$plane" ] ||
+			die 'a debug log takes no --head or --plane — the symptom in its title is the from-state'
+		[ "$n" -ge 3 ] &&
+			die 'a debug log is exactly three states. A fix that needs a fourth is cook-sized — close it "escalated → cook" and start a goal.'
+		[ "$n" -ge 1 ] && ! is_reached "$f" "$n" &&
+			die "S$n is not reached — debug states are sequential; reach it (\`goal --debug reached $n\`) before logging S$s"
+		require_label "$s" "$outcome"
+	fi
+	printf '%s' "$forbids" | jq -Rnc \
+		--arg o "$outcome" --arg at "$(now_ts)" --arg plane "$plane" \
+		--argjson s "$s" --argjson head "$head" \
+		'[inputs | select(length > 0)] as $fb
+		 | {kind:"state", s:$s, at:$at, outcome:$o}
+		 + (if $head then {truth:"head"} else {} end)
+		 + (if $plane == "" then {} else {plane:$plane} end)
+		 + (if ($fb | length) == 0 then {} else {forbid:$fb} end)' | append "$f"
+	cmd_now
+}
+
+cmd_amend() {
+	[ "$#" -eq 1 ] && [ -n "$1" ] || die 'usage: goal amend "<reworded outcome>"'
+	f=$(resolve)
+	s=$(jq -s '[.[] | select(.kind=="state") | .s] | max // 0' "$f")
+	[ "$s" -eq 0 ] && die 'no state logged yet — nothing to amend'
+	[ "$MODE" = debug ] && require_label "$s" "$1"
+	# Carry the original's flags forward; only the wording changes.
+	jq -sc --arg o "$1" --arg at "$(now_ts)" --argjson s "$s" \
+		'[.[] | select(.kind=="state" and .s==$s)] | last
+		 | .outcome = $o | .at = $at | .amended = true' "$f" | append "$f"
+	cmd_now
+}
+
+require_state() { # file, s
+	[ "$(jq -s --argjson s "$2" 'any(.[]; .kind=="state" and .s==$s)' "$1")" = true ] ||
+		die "no state S$2 in this log — \`goal show\` to see what exists"
+}
+
+cmd_mark() { # kind, field, s, text
+	kind=$1 field=$2
+	[ "$#" -eq 4 ] && [ -n "$4" ] || die "usage: goal $kind <s> \"<$field>\""
+	case "$3" in '' | *[!0-9]*) die "state id must be a number, got: $3" ;; esac
+	f=$(resolve)
+	require_state "$f" "$3"
+	jq -nc --arg k "$kind" --arg field "$field" --arg v "$4" \
+		--arg at "$(now_ts)" --argjson s "$3" \
+		'{kind:$k, s:$s, at:$at} + {($field): $v}' | append "$f"
+	cmd_now
+}
+
+cmd_close() {
+	[ "$#" -eq 1 ] && [ -n "$1" ] || die 'usage: goal close "<disposition>"'
+	f=$(resolve)
+	if [ "$MODE" = debug ] && ! is_reached "$f" 3; then
+		case "$1" in escalated* | dropped*) ;;
+		*) die 'S3 is not reached — the lesson is not recorded. Reach it, or close "escalated → <goal>" / "dropped: <why>".' ;;
+		esac
+	fi
+	jq -nc --arg d "$1" --arg at "$(now_ts)" '{kind:"closed",at:$at,disposition:$d}' | append "$f"
+	printf 'closed %s — %s\n' "${f#"$ROOT"/}" "$1"
+}
+
+# The open state: highest s with no `reached`. This is the brief for the next
+# attempt, and what the SessionStart hook injects.
+cmd_now() {
+	f=$(resolve)
+	[ "$MODE" = debug ] && { debug_now "$f"; return; }
+	jq -rs '
+		([.[] | select(.kind=="reached") | .s] | unique) as $done
+		| [.[] | select(.kind=="state") | select(.truth != "head")
+		     | select(.s as $s | $done | index($s) | not)] as $open
+		| if ($open | length) == 0 then
+			"  every logged state is reached — add the next one, or `goal close`"
+		  else ($open | last) as $st
+		  | "  S\($st.s)  \($st.outcome)"
+		    + (if $st.plane then "\n        plane: \($st.plane)" else "" end)
+		    + (if $st.forbid then ("\n" + ($st.forbid | map("        forbid: " + .) | join("\n"))) else "" end)
+		  end' "$f"
+}
+
+# A debug log's hot path is all three rows: ✓ reached, → open (with its ✗
+# count), · not yet logged. Three lines is the whole fix at a glance.
+debug_now() {
+	jq -rs '
+		. as $all
+		| [1, 2, 3] | map(. as $s
+			| ([$all[] | select(.kind=="state" and .s==$s)] | last) as $st
+			| ([$all[] | select(.kind=="failed" and .s==$s)] | length) as $nf
+			| if $st == null then
+				"  ·  S\($s)  " + (["Reproduced", "Fixed", "Recorded"][$s - 1]) + ": — not yet logged"
+			  elif any($all[]; .kind=="reached" and .s==$s) then "  ✓  S\($s)  \($st.outcome)"
+			  else "  →  S\($s)  \($st.outcome)" + (if $nf > 0 then "  (\($nf) ✗)" else "" end)
+			    + (if $st.forbid then ("\n" + ($st.forbid | map("        forbid: " + .) | join("\n"))) else "" end)
+			  end)
+		| join("\n")' "$1"
+}
+
+cmd_show() {
+	f=$(resolve)
+	printf '%s\n' "${f#"$ROOT"/}"
+	jq -rs '
+		. as $all
+		| ([.[] | select(.kind=="goal") | .title] | first) as $title
+		| ([.[] | select(.kind=="closed")] | first) as $closed
+		| (if $title then "  \($title)\n" else "" end)
+		+ ([.[] | select(.kind=="state") | .s] | unique | map(. as $s
+			| ([$all[] | select(.kind=="state" and .s==$s)] | last) as $st
+			| "  S\($s)  \($st.at)  \($st.outcome)"
+			  + (if $st.truth == "head" then "  [true at HEAD]" else "" end)
+			  + (if $st.amended then "  [amended]" else "" end)
+			  + (if $st.plane then "\n          plane: \($st.plane)" else "" end)
+			  + (if $st.forbid then ("\n" + ($st.forbid | map("          forbid: " + .) | join("\n"))) else "" end)
+			  + ([$all[] | select(.s==$s and .kind=="failed") | "\n     ✗    \(.why)"] | join(""))
+			  + ([$all[] | select(.s==$s and .kind=="reached") | "\n     ✓    \(.evidence)"] | join(""))
+		  ) | join("\n"))
+		+ (if $closed then "\n  — closed: \($closed.disposition)" else "" end)
+	' "$f"
+}
+
+NEWCMD='goal new'
+if [ "${1:-}" = "--debug" ]; then
+	MODE=debug
+	GOALS=$ROOT/docs/backlogs/debug
+	NEWCMD='goal --debug new'
+	shift
+fi
+
+[ "$#" -gt 0 ] || { usage; exit 1; }
+cmd=$1
+shift
+case $cmd in
+new) cmd_new "$@" ;;
+add) cmd_add "$@" ;;
+reached) cmd_mark reached evidence "$@" ;;
+failed) cmd_mark failed why "$@" ;;
+amend) cmd_amend "$@" ;;
+close) cmd_close "$@" ;;
+now | get) cmd_now ;;
+show) cmd_show ;;
+path) resolve ;;
+-h | --help | help) usage ;;
+*) die "unknown command: $cmd" ;;
+esac

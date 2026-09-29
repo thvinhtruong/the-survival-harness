@@ -5,30 +5,31 @@
 ## Doc map
 
 **This table is the only place a doc path is written down.** `.claude/rules/*`,
-`.claude/hooks/*`, skills and agents all defer to it — so moving, renaming or
-sharding a doc is a one-file change. Paths are relative to repo root;
-`reference/` means `docs/reference/`.
+`.claude/hooks/*`, skills and agents all defer to it. Keep prose docs to the
+minimum the code cannot say for itself; everything else is read from the code,
+via the `navigator` agent.
 
-| Working on | Read (on demand → deeper) | Update when it breaks |
+| Working on | Read (on demand) | Update when it breaks |
 |---|---|---|
-| {{a code surface, e.g. `backend/app/routers/**`}} | {{the doc to read, shallowest first}} | {{the command to regenerate + the doc to edit}} |
-| {{another surface}} | {{…}} | {{…}} |
-| a product/domain question | `reference/architecture.md` (domain nouns + invariants) → the one relevant `##` section of `{{product doc}}` | — |
+| {{a code surface, e.g. `backend/app/routers/**`}} | {{the generated reference, or "the router itself"}} | {{the regenerate command + the client mirror to move with it}} |
+| {{another surface, e.g. `frontend/src/**`}} | {{the files themselves; name the route table}} | — |
+| {{frontend **visual** work}} | {{the one visual-spec doc, if any}} | {{that doc, when a spec value changed}} |
+| a product/domain question | the one relevant `##` section of {{product doc}}, never the whole file | — |
+| a bug that could recur | `docs/backlogs/debug/` — search for a matching lesson before debugging | a lesson in `docs/backlogs/debug/` |
 
 **Docs change only when something breaks a contract** — a response shape, a
-schema or access-control decision, an invariant, a route or layout owner, a
-design token or component spec. Then the "Update when it breaks" column above
-applies. A behaviour-preserving change updates nothing; the Stop hook nudges and
-the escape marker is in the **`cook` skill** §10.
+schema or access-control decision, a visual spec value. Then the "Update when it
+breaks" column above applies. A behaviour-preserving change updates nothing; the
+Stop hook nudges and the escape marker is in the **`cook` skill** §10.
 
-**Never a mandated read:** `docs/backlogs/plans/`'s `done/` and `archived/` are
-history, and `docs/backlogs/`'s `research/` and `debug/` are write destinations,
-not context to load.
+**Never a mandated read:** `docs/backlogs/goals/` is written only by
+`scripts/goal` (a SessionStart hook injects the open one), and
+`docs/backlogs/research/` is a write destination, not context to load.
 
-**Generated, never hand-edited:** {{list them, with the command that regenerates
-each}}. Edit the source and regenerate. The prose docs beside them are
-hand-written and stay so — a "why" belongs beside its invariant in
-`reference/architecture.md`.
+**Generated, never hand-edited, never read whole:** {{list them, with the
+command that regenerates each — and put the same paths in `GENERATED_FILES` in
+`.claude/harness.conf`}}. Edit the source and regenerate. A "why" belongs beside
+the code it explains.
 
 If the area you touched has no row here, ask whether a doc update is needed —
 don't silently skip, and don't invent a path outside this table.

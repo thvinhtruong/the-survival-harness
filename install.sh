@@ -4,7 +4,7 @@
 #
 #   ./install.sh /path/to/repo
 #
-# Afterwards, the three things to answer are printed at the end.
+# Afterwards, the things to answer are printed at the end.
 
 set -euo pipefail
 
@@ -14,7 +14,9 @@ DEST=${1:-}
 [ -n "$DEST" ] || { echo "usage: $0 /path/to/target-repo" >&2; exit 1; }
 [ -d "$DEST" ] || { echo "not a directory: $DEST" >&2; exit 1; }
 git -C "$DEST" rev-parse --git-dir >/dev/null 2>&1 \
-  || { echo "not a git repo: $DEST — the harness uses git status as its signal" >&2; exit 1; }
+  || { echo "not a git repo: $DEST — the harness uses git as its signal" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 \
+  || echo "warning: jq not found — scripts/goal refuses to run and the JSON hooks fail open until it is installed" >&2
 
 copied=0 skipped=0
 
@@ -37,23 +39,25 @@ for f in \
   .claude/README.md \
   .claude/rules/primary.md \
   .claude/agents/implementer.md \
+  .claude/agents/navigator.md \
+  .claude/agents/researcher.md \
   .claude/skills/cook \
+  .claude/skills/debug \
+  .claude/skills/gap-audit \
   .claude/hooks \
-  scripts/goal.sh \
-  docs/reference/architecture.md \
-  docs/backlogs/plans/README.md \
-  docs/backlogs/plans/_TEMPLATE.md \
-  docs/backlogs/plans/_EXAMPLE \
-  docs/backlogs/plans/active \
-  docs/backlogs/plans/done \
-  docs/backlogs/plans/archived \
-  docs/backlogs/research \
-  docs/backlogs/debug
+  scripts/goal \
+  scripts/gate-record.sh \
+  scripts/skip.sh \
+  docs/backlogs/goals/README.md \
+  docs/backlogs/goals/_EXAMPLE.jsonl \
+  docs/backlogs/debug \
+  docs/backlogs/research
 do
   copy "$f"
 done
 
-chmod +x "$DEST"/.claude/hooks/*.sh "$DEST"/scripts/goal.sh 2>/dev/null || true
+chmod +x "$DEST"/.claude/hooks/*.sh "$DEST"/scripts/goal "$DEST"/scripts/gate-record.sh \
+  "$DEST"/scripts/skip.sh 2>/dev/null || true
 
 # CLAUDE.md is never overwritten — an existing one is the project's own.
 if [ -e "$DEST/CLAUDE.md" ]; then
@@ -76,21 +80,30 @@ echo
 echo "copied $copied, skipped $skipped"
 echo
 cat <<'NEXT'
-Three things to answer before the harness does anything for you:
+Four things to answer before the harness does anything for you:
 
-  1. GATES — .claude/harness.conf
-     The commands that mean "it works" here. Everything else in the harness is
-     prose; these are the only thing that actually stops bad work. If you have
-     no gate that fails on real breakage, fix that first.
+  1. GATES — .claude/harness.conf, and the Makefile
+     The make targets that mean "it works" here. Each recipe's LAST line must
+     record the pass against the tree it ran on:
+
+         lint:
+         	<your linters / type-check / build>
+         	@scripts/gate-record.sh lint
+
+     These gates are the only thing that actually stops bad work — if none
+     fails on real breakage, fix that first.
 
   2. DOC_SYNC_CONTRACT_PATHS — .claude/harness.conf
      The paths where a change can break a documented contract. Until you set
      this, the doc-sync Stop hook is inert (it fails open by design).
 
-  3. The Doc map — CLAUDE.md
+  3. GENERATED_FILES — .claude/harness.conf
+     Files that are regenerated, never hand-edited. Edit/Write on them is denied.
+
+  4. The Doc map — CLAUDE.md
      One row per code surface: what to read, what to update when it breaks.
 
 Then verify:
-  .claude/hooks/test-guard.sh      # the destructive-ops guard, 17 cases
-  scripts/goal.sh                  # usage; `new <slug> "<title>"` starts a goal
+  .claude/hooks/test-guard.sh      # syntax sweep + every guard's allow/deny cases
+  scripts/goal                     # usage; `new <slug> "<title>"` starts a goal
 NEXT

@@ -1,0 +1,6 @@
+{"kind":"goal","title":"Saved drafts persist and are readable only by their author","at":"2026-01-10T09:00Z"}
+{"kind":"state","s":1,"at":"2026-01-10T09:00Z","outcome":"Drafts live only in the browser; nothing reaches /api/drafts and a reload loses them.","truth":"head"}
+{"kind":"state","s":2,"at":"2026-01-10T09:05Z","outcome":"A saved draft persists, and its author can reopen it after a reload.","plane":"be","forbid":["no new migration — the drafts table already carries every column and access rule","no change to the public POST /api/drafts request shape"]}
+{"kind":"failed","s":2,"at":"2026-01-10T09:40Z","why":"make test red: the route trusted the access policy instead of filtering; another user still got rows"}
+{"kind":"reached","s":2,"at":"2026-01-10T10:15Z","evidence":"make lint + make test green; the author reads their draft back, another user gets 404"}
+{"kind":"state","s":3,"at":"2026-01-10T10:20Z","outcome":"A shared-workspace member sees a draft only once its author publishes it; before that, zero rows, not a filtered count.","forbid":["no admin read path — widening it here crosses a privacy boundary this goal has not cleared"]}

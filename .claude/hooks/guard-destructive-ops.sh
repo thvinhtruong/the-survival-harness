@@ -65,6 +65,32 @@ if printf '%s' "$cmd" | grep -iqE '\bgit\s+push\b.*(--force\b|--force-with-lease
   deny "force-push targeting a protected branch (main/master/develop/production)"
 fi
 
+# 3. `git restore` discards working-tree content unless it is only unstaging.
+#    Needs a negation the pattern file's grep -E cannot express.
+if printf '%s' "$cmd" | grep -iqE '\bgit\s+restore\b' \
+   && ! printf '%s' "$cmd" | grep -iqE '(^|\s)--staged(\s|$)'; then
+  deny "git restore without --staged discards uncommitted changes in the working tree"
+fi
+
+# 4. `git checkout <path>` — the same working-tree loss as `git restore`, and the
+#    `--` the pattern file matches on is optional. Told apart from a branch
+#    checkout the only way that is reliable: an argument naming a file or
+#    directory that exists right now is a path, not a ref. This gap cost a real
+#    uncommitted edit, recovered only because a transcript happened to hold it.
+if printf '%s' "$cmd" | grep -iqE '\bgit\s+checkout\b' \
+   && ! printf '%s' "$cmd" | grep -qE '(^|\s)-[bB](\s|$)'; then
+  # awk, not sed: BSD sed has no \b, so the extraction silently produced nothing
+  # here and the check passed everything through on macOS.
+  args=$(printf '%s' "$cmd" | tr ';|&' '\n' \
+    | awk '{ for (i = 1; i <= NF; i++) if ($i == "checkout") { for (j = i+1; j <= NF; j++) printf "%s ", $j; exit } }')
+  for a in $args; do
+    case "$a" in -*|--) continue ;; esac
+    if [ -e "${CLAUDE_PROJECT_DIR:-$(pwd)}/$a" ] || [ -e "$a" ]; then
+      deny "git checkout of a path ($a) discards uncommitted changes in the working tree — use \`git stash\` or leave the file alone"
+    fi
+  done
+fi
+
 # --- Pattern-file checks --------------------------------------------------
 [ -r "$PATTERNS_FILE" ] || exit 0
 
