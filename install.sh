@@ -21,7 +21,14 @@ command -v jq >/dev/null 2>&1 \
 copied=0 skipped=0
 
 copy() { # $1 = path relative to template root
-  local rel="$1" src="$SRC/$1" dst="$DEST/$1"
+  local rel="$1" src="$SRC/$1" dst="$DEST/$1" f
+  # Directories go file by file: an existing .claude/hooks/ must not make the
+  # whole harness hook set skip, or settings.json points at scripts that are
+  # not there and every guard fails open.
+  if [ -d "$src" ]; then
+    while IFS= read -r f; do copy "${f#"$SRC"/}"; done < <(find "$src" -type f | sort)
+    return
+  fi
   if [ -e "$dst" ]; then
     printf '  skip    %s (exists)\n' "$rel"; skipped=$((skipped + 1)); return
   fi
@@ -88,9 +95,14 @@ Four things to answer before the harness does anything for you:
      The make targets that mean "it works" here. Each recipe's LAST line must
      record the pass against the tree it ran on:
 
+         .PHONY: lint test
          lint:
          	<your linters / type-check / build>
          	@scripts/gate-record.sh lint
+
+     Every gate must be .PHONY — a same-named directory (build/, test/) makes
+     make skip the recipe and exit 0, so the gate "passes" without running.
+     No `-` prefix or `|| true` on a gate line: it would record a failed pass.
 
      These gates are the only thing that actually stops bad work — if none
      fails on real breakage, fix that first.

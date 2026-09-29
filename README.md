@@ -52,10 +52,14 @@ The entire configuration surface is **one file, one Makefile convention and one 
 - Each gate recipe in the `Makefile` ends with `@scripts/gate-record.sh <target>`:
 
   ```make
+  .PHONY: test
   test:
   	<your test command(s)>
   	@scripts/gate-record.sh test
   ```
+
+  Every gate is `.PHONY` — a same-named directory (`build/`, `test/`) otherwise
+  makes `make` skip the recipe and exit 0.
 
 - The Doc map in `CLAUDE.md` — one row per code surface.
 
