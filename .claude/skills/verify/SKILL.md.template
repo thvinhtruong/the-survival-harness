@@ -1,0 +1,65 @@
+---
+name: verify
+description: Run {{PROJECT NAME}} locally and drive its real flows in a browser to observe a change working. Use when asked to run, start or screenshot the app, or to confirm a change behaves correctly in the running app rather than only in tests.
+---
+
+<!--
+Outline for the browser pass `cook` §8 and `debug` §9 invoke. Rename this file
+to SKILL.md, fill every {{…}}, delete what does not apply, and set
+BROWSER_VERIFY_SKILL="verify" in .claude/harness.conf. Write down only what a
+cold session would otherwise get wrong — the traps, not the obvious.
+-->
+
+# Verify — {{PROJECT NAME}}
+
+**{{How many processes, on which ports, and what runs inside what.}}** Run them
+on the host rather than in containers so logs are greppable and restarts are fast.
+
+## Prerequisites
+
+{{Env vars with no default, external services that must exist (a real database,
+an auth provider setting), how the schema gets created, seed flags. Say what the
+app does when one is missing, so the symptom is recognisable.}}
+
+## Launch
+
+```bash
+# 1. {{backend}}
+{{command}}
+
+# 2. {{frontend}} — {{any override needed outside containers, e.g. a proxy target}}
+{{command}}
+```
+
+Redirect each to a log file and background it, then confirm both are up:
+
+```bash
+{{health-check curl for each process}}
+```
+
+## Drive it
+
+{{Browser quirks that cost time here: hostname form that works, screenshot
+fallbacks, how to type into controlled inputs, stable selectors to scope by.}}
+
+## Routes worth driving
+
+| Surface | Route |
+|---|---|
+| {{surface}} | {{route}} |
+
+## Flows worth driving
+
+- **{{Flow}}** → {{action}}; expect {{what appears on screen}} and {{the API /
+  DB evidence that proves it persisted}}.
+- **{{Safety- or money-critical flow}}** → {{check it on every surface it can
+  reach}}.
+
+## Reading evidence from logs
+
+```bash
+{{grep lines that show the change happened}}
+```
+
+{{Invariants whose violation shows up in a log — if you see it, that is the
+bug, not the evidence. Slow operations and the waits they need.}}

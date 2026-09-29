@@ -28,4 +28,4 @@ Unresolved:
   to its source (log path:line, run id, query) and quote the decisive line
   verbatim. Never write to a database; never quote user PII or secrets.
 - Say "not found" rather than guess; list what you could not resolve under **Unresolved**.
-- Never read a generated file whole (`GENERATED_FILES` in `.claude/harness.conf`) — grep it for the one entry you need.
+- Never read a generated file whole (`GENERATED_FILES` in `.claude/harness.conf`) — grep it for the one entry you need. For routes, when `API_SPEC` is set, run the `api-lookup` skill's script instead.

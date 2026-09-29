@@ -1,0 +1,56 @@
+---
+name: api-lookup
+description: Look up any backend HTTP route (request/response shape, status codes, auth rule) from the generated OpenAPI spec, without reading the file. Use when asked what a route returns or accepts, which routes carry a given field, what auth a route requires, or when adding/changing a route or a response model (regenerate afterwards).
+allowed-tools: Bash, Read, Grep
+---
+
+<!--
+Only for repos that generate an OpenAPI 3 JSON spec from the code. To adopt:
+set API_SPEC in .claude/harness.conf, add the spec to GENERATED_FILES with a
+`--check` step in a gate, rename this file to SKILL.md, and replace every {{…}}.
+-->
+
+# API lookup
+
+The spec at `API_SPEC` (`.claude/harness.conf`) is generated from the app — the
+same models the server serialises — so it is the route shapes' only source of
+truth. A hand-written route reference beside it is a regression.
+
+**Never read the spec.** Every command below prints plain text — one route
+costs ~100–250 tokens.
+
+```bash
+S=.claude/skills/api-lookup/api-lookup.py
+
+python3 $S list                                  # every route (+ x-auth if present)
+python3 $S list --prefix /api/admin --method get
+python3 $S list --tag users --auth admin
+python3 $S show GET /api/users/{id}              # one route, $refs expanded
+python3 $S search email                          # field or schema -> routes
+python3 $S schema UserOut                        # one component schema
+```
+
+## Auth
+
+If the generator writes an `x-auth` extension on each operation — derived from
+the route's real auth dependency, not a comment — `list` and `show` print it and
+`--auth` filters on it. Deriving it from the dependency tree is what keeps it
+from drifting; a hand-maintained value is worse than none. {{What each x-auth
+value means here, and any scoping the router enforces that x-auth cannot show —
+or delete this section.}}
+
+## Writing
+
+Read-only. To change a shape, change the {{response model / route}} in
+{{path}}, then regenerate with {{command}} and move its client mirror
+({{path}}) in the same change.
+
+## Limits
+
+Shapes, status codes and auth only. Behaviour OpenAPI cannot express —
+idempotency, background work, why a route 404s instead of 403ing — lives in the
+route code. Read that for *why*; use this for *what the wire carries*.
+
+The same pattern extends to the database: dump tables, columns, keys and access
+policies to a generated JSON (from the models plus a replay of the migrations),
+and add `tables` / `table` / `column` commands here.

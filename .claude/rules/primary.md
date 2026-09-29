@@ -8,3 +8,4 @@
 6. **Measure, never claim** — run every gate in `GATES` (`.claude/harness.conf`) after the last edit, and never say done with a failing or unrun gate.
 7. **Debug to root cause** — fix the cause, never reach green by editing a test, widening to `any`, an ignore pragma, or swallowing an exception.
 8. **Write down only what prevents a repeat** — a bug's root cause or a lesson learnt goes in `docs/backlogs/debug/`; nothing else gets written up.
+9. **No file past 1,000 lines** — when a file you create or grow would cross it, split it by domain (one module per route group, feature or table family). A file that has no clean seam — typically a single UI component — stays whole without comment; this is a soft limit. Generated and vendored files are exempt.

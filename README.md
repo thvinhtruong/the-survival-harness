@@ -20,6 +20,7 @@ tree it ran on — not a claim.
 | `.claude/skills/cook/` | Features: scout (navigator) → claim the goal → log the states → write the forbids → hand off → measure → read the diff → gap audit → docs → close. |
 | `.claude/skills/debug/` | Bugs, as a three-state log (`scripts/goal --debug`, `docs/backlogs/debug/`): **Reproduced** (root cause at `path:line`) → **Fixed** (gates green; ✗ records are fixes that failed) → **Recorded** (the lesson). The closed log is the lesson. Fixes ≤ 5 files inline, else hands off to the implementer; escalates to `cook` only with the user's say-so. |
 | `.claude/skills/gap-audit/` | Seven gap classes that pass unit tests and break production: unwired code, divergent helpers, bypassed filters, starved windows, format mismatches, untested seams — and security at the new seams (access control, injection, fail-open, secrets/PII, disabled safety, new dependencies). |
+| `.claude/skills/{verify,api-lookup}/` | Opt-in, shipped as `SKILL.md.template` so they cost no tokens until adopted. `verify`: an outline for the browser pass (`BROWSER_VERIFY_SKILL`). `api-lookup`: queries a generated OpenAPI 3 spec (`API_SPEC`) one route at a time instead of reading it whole. |
 | `.claude/agents/` | `navigator` (Haiku, read-only, cites `path:line`), `implementer` (Sonnet, codes one state against its forbids, may report `infeasible`), `researcher` (Haiku, web only). The implementer is the only agent that writes code, for both `cook` and `debug`; the navigator also reads bulky evidence (logs, CI, DB). |
 | `.claude/hooks/guard-destructive-ops.sh` | Deterministic deny of destructive shell/SQL/git ops — including `git checkout <path>` / `git restore`. Runs outside the model. |
 | `.claude/hooks/guard-goal-writes.sh` | The goal log is append-only as a property of the system: Edit/Write, redirects, `sed -i`, `mv`, `rm`… on it are denied. Always on. |
@@ -35,6 +36,10 @@ tree it ran on — not a claim.
 ./install.sh /path/to/your-repo
 ```
 
+Or skip the manual steps below: paste [`SETUP-PROMPT.md`](SETUP-PROMPT.md) into
+Claude Code at the target repo's root. It installs, reads the repo, and fills
+every setting from the project's own CI and manifests.
+
 Never overwrites. An existing `CLAUDE.md` is left alone and the template lands
 beside it as `CLAUDE.md.harness-template`. Requires `git` and `jq`.
 
@@ -42,8 +47,7 @@ beside it as `CLAUDE.md.harness-template`. Requires `git` and `jq`.
 
 The entire configuration surface is **one file, one Makefile convention and one table**:
 
-- `.claude/harness.conf` — your gates (make targets), the files they cover,
-  your contract-bearing paths, your generated files, your gap-audit threshold,
+- `.claude/harness.conf` — your gates (make targets), your contract-bearing paths, your generated files, your gap-audit threshold,
   and optionally a browser-verify skill.
 - Each gate recipe in the `Makefile` ends with `@scripts/gate-record.sh <target>`:
 

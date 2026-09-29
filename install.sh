@@ -44,6 +44,8 @@ for f in \
   .claude/skills/cook \
   .claude/skills/debug \
   .claude/skills/gap-audit \
+  .claude/skills/verify \
+  .claude/skills/api-lookup \
   .claude/hooks \
   scripts/goal \
   scripts/gate-record.sh \
@@ -69,7 +71,7 @@ else
 fi
 
 # .gitignore: append only what is missing.
-for line in '.claude/state' '__pycache__/'; do
+for line in '.claude/state' '.claude/scheduled_tasks.lock' '__pycache__/'; do
   if ! grep -qxF "$line" "$DEST/.gitignore" 2>/dev/null; then
     echo "$line" >> "$DEST/.gitignore"
     echo "  added   .gitignore: $line"
@@ -99,6 +101,14 @@ Four things to answer before the harness does anything for you:
 
   3. GENERATED_FILES — .claude/harness.conf
      Files that are regenerated, never hand-edited. Edit/Write on them is denied.
+     The guard only stops hand-edits — add each generator's `--check` step to
+     a gate (e.g. lint) so a stale file fails too.
+
+     Optional: BROWSER_VERIFY_SKILL — fill .claude/skills/verify/SKILL.md.template,
+     rename it to SKILL.md, and set BROWSER_VERIFY_SKILL="verify".
+
+     Optional: API_SPEC — if you generate an OpenAPI 3 JSON spec, set its path
+     and rename .claude/skills/api-lookup/SKILL.md.template to SKILL.md.
 
   4. The Doc map — CLAUDE.md
      One row per code surface: what to read, what to update when it breaks.

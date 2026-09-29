@@ -75,7 +75,8 @@ runs, DB state) → spawn `navigator` to read it and keep only its cited facts.
 not. Start at the entry point the symptom reaches — the route handler for an
 API bug, the page's route for a UI bug — and follow the call chain to where
 actual diverges from expected. Read the files on that chain, not the area around
-it. Grep a generated reference for the one entry you need; never read it whole. Ask what changed before what's wrong: `git log --oneline -20 -- <path>`,
+it. Grep a generated reference for the one entry you need (routes: the
+`api-lookup` skill, when `API_SPEC` is set); never read it whole. Ask what changed before what's wrong: `git log --oneline -20 -- <path>`,
 `git bisect` when it used to work. Temporary logging is fine to confirm a
 hypothesis — remove it before S2, and never log user PII or secrets.
 
